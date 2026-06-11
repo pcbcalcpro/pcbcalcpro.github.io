@@ -557,22 +557,30 @@ function loadUserPrefs() {
 
 // ============ IP 地区检测 → 自动切换语言 ============
 function detectLanguageFromIP() {
-    fetch('https://ipapi.co/country_code/', { signal: AbortSignal.timeout(3000) })
-        .then(function(res) { return res.text(); })
-        .then(function(countryCode) {
-            countryCode = countryCode.trim().toUpperCase();
-            var detectedLang = countryToLang[countryCode] || "en";
+    // 先用浏览器语言作为即时备用（避免 IP API 超时导致英文闪一下）
+    var browserLang = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
+    var browserLangMap = {
+        'zh': 'zh', 'zh-cn': 'zh', 'zh-tw': 'zh', 'zh-hk': 'zh',
+        'ja': 'ja', 'de': 'de', 'fr': 'fr', 'es': 'es', 'ru': 'ru'
+    };
+    var fallbackLang = browserLangMap[browserLang] || browserLangMap[browserLang.split('-')[0]] || 'en';
+    if (!userPickedLang) {
+        applyLang(fallbackLang);
+    }
 
-            // 仅当用户从未手动选过语言时才自动切换
+    // 再用 IP 检测做最终确认（覆盖浏览器语言）
+    // 改用 ip-api.com，该接口支持 HTTP，不强制 HTTPS，避免手机证书问题
+    fetch('https://ip-api.com/json/?fields=countryCode', { signal: AbortSignal.timeout(4000) })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            var countryCode = (data.countryCode || '').toUpperCase();
+            var detectedLang = countryToLang[countryCode] || fallbackLang;
             if (!userPickedLang) {
                 applyLang(detectedLang);
             }
         })
         .catch(function() {
-            // 检测失败 → 保持当前语言（可能是 localStorage 恢复的）
-            if (!userPickedLang) {
-                applyLang("en");
-            }
+            // IP 检测失败 → 保持浏览器语言检测结果，不回落到英文
         });
 }
 
